@@ -1,5 +1,6 @@
 package com.devandcoffee.bluetoothtest;
 
+import android.Manifest;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -7,10 +8,14 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.Build;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
@@ -19,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
+    private static final String TAG = "MainActivity";
 
     private final int REQUEST_ENABLE_BT = 1234;
 
@@ -32,15 +38,18 @@ public class MainActivity extends AppCompatActivity {
 
     private RecyclerViewAdapter mAdapter;
 
-    // Create a BroadcastReceiver for ACTION_FOUND
-    private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
+    private BroadcastReceiver mReceiver = new BroadcastReceiver() {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            // When discovery finds a device
-            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+            if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)) {
+                Log.i("DISCOVERY START", ": " + action);
+            } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                Log.i("DISCOVERY FINISHED", ": " + action);
+            } else if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                 // Get the BluetoothDevice object from the Intent
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 // Add the name and address to an array adapter to show in a ListView
+                Log.i("BLUETOOTH DEVICE", ": " + device.getName());
                 mAdapter.addItem(device.getName() + "\n" + device.getAddress());
             }
         }
@@ -68,17 +77,7 @@ public class MainActivity extends AppCompatActivity {
         mStartDiscoveryButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (mBluetoothAdapter.startDiscovery()) {
-
-                    //If discovery has started, then display the following toast....//
-                    Toast.makeText(getApplicationContext(), "Discovering other bluetooth devices...",
-                            Toast.LENGTH_SHORT).show();
-                } else {
-
-                    //If discovery hasn’t started, then display this alternative toast//
-                    Toast.makeText(getApplicationContext(), "Something went wrong! Discovery has failed to start.",
-                            Toast.LENGTH_SHORT).show();
-                }
+                btnDiscovery();
             }
         });
 
@@ -99,12 +98,50 @@ public class MainActivity extends AppCompatActivity {
                     mAdapter.addItem(device.getName() + "\n" + device.getAddress());
                 }
             }
+        }
+    }
 
+    public void btnDiscovery() {
+        if (mBluetoothAdapter.isDiscovering()) {
+            mBluetoothAdapter.cancelDiscovery();
+
+            checkBTPermissions();
+
+            mBluetoothAdapter.startDiscovery();
             // Register the BroadcastReceiver
-            IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+            IntentFilter filter = new IntentFilter();
+            filter.addAction(BluetoothDevice.ACTION_FOUND);
+            filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+            filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+            registerReceiver(mReceiver, filter);
+        }
+
+        if (!mBluetoothAdapter.isDiscovering()) {
+            checkBTPermissions();
+
+            mBluetoothAdapter.startDiscovery();
+            // Register the BroadcastReceiver
+            IntentFilter filter = new IntentFilter();
+            filter.addAction(BluetoothDevice.ACTION_FOUND);
+            filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+            filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
             registerReceiver(mReceiver, filter);
         }
     }
+
+    private void checkBTPermissions() {
+        if(Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP){
+            int permissionCheck = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION);
+            permissionCheck += ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION);
+            if (permissionCheck != 0) {
+
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 1001);
+            }
+        }else{
+            Log.d(TAG, "checkBTPermissions: No need to check permissions. SDK version < LOLLIPOP.");
+        }
+    }
+
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -125,6 +162,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(mReceiver);
+        if (mReceiver != null) {
+            unregisterReceiver(mReceiver);
+        }
     }
 }
